@@ -270,6 +270,35 @@ enum {
 
 typedef uint32_t audio_channel_mask_t;
 
+/* Maximum number of channels for all representations */
+#define AUDIO_CHANNEL_COUNT_MAX             30
+
+/* log(2) of maximum number of representations, not part of public API */
+#define AUDIO_CHANNEL_REPRESENTATION_LOG2   2
+
+/* Representations */
+typedef enum {
+    AUDIO_CHANNEL_REPRESENTATION_POSITION    = 0,    // must be zero for compatibility
+    // 1 is reserved for future use
+    AUDIO_CHANNEL_REPRESENTATION_INDEX       = 2,
+    // 3 is reserved for future use
+} audio_channel_representation_t;
+
+/* The return value is undefined if the channel mask is invalid. */
+static inline uint32_t audio_channel_mask_get_bits(audio_channel_mask_t channel)
+{
+    return channel & ((1 << AUDIO_CHANNEL_COUNT_MAX) - 1);
+}
+
+/* The return value is undefined if the channel mask is invalid. */
+static inline audio_channel_representation_t audio_channel_mask_get_representation(
+        audio_channel_mask_t channel)
+{
+    // The right shift should be sufficient, but also "and" for safety in case mask is not 32 bits
+    return (audio_channel_representation_t)
+            ((channel >> AUDIO_CHANNEL_COUNT_MAX) & ((1 << AUDIO_CHANNEL_REPRESENTATION_LOG2) - 1));
+}
+
 typedef enum {
     AUDIO_MODE_INVALID          = -2,
     AUDIO_MODE_CURRENT          = -1,
@@ -516,6 +545,48 @@ static inline bool audio_is_output_channel(audio_channel_mask_t channel)
         return channel != 0;
     else
         return false;
+}
+
+/* Returns the number of channels from an input channel mask,
+ * used in the context of audio input or recording.
+ * If a channel bit is set which could _not_ correspond to an input channel,
+ * it is excluded from the count.
+ * Returns zero if the representation is invalid.
+ */
+static inline uint32_t audio_channel_count_from_in_mask(audio_channel_mask_t channel)
+{
+    uint32_t bits = audio_channel_mask_get_bits(channel);
+    switch (audio_channel_mask_get_representation(channel)) {
+    case AUDIO_CHANNEL_REPRESENTATION_POSITION:
+        // TODO: We can now merge with from_out_mask and remove anding
+        bits &= AUDIO_CHANNEL_IN_ALL;
+        // fall through
+    case AUDIO_CHANNEL_REPRESENTATION_INDEX:
+        return popcount(bits);
+    default:
+        return 0;
+    }
+}
+
+/* Returns the number of channels from an output channel mask,
+ * used in the context of audio output or playback.
+ * If a channel bit is set which could _not_ correspond to an output channel,
+ * it is excluded from the count.
+ * Returns zero if the representation is invalid.
+ */
+static inline uint32_t audio_channel_count_from_out_mask(audio_channel_mask_t channel)
+{
+    uint32_t bits = audio_channel_mask_get_bits(channel);
+    switch (audio_channel_mask_get_representation(channel)) {
+    case AUDIO_CHANNEL_REPRESENTATION_POSITION:
+        // TODO: We can now merge with from_in_mask and remove anding
+        bits &= AUDIO_CHANNEL_OUT_ALL;
+        // fall through
+    case AUDIO_CHANNEL_REPRESENTATION_INDEX:
+        return popcount(bits);
+    default:
+        return 0;
+    }
 }
 
 /* Derive an output channel mask from a channel count.
