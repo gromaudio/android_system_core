@@ -731,6 +731,34 @@ static void kernel_cmdline_to_env(char *name, int in_qemu)
     }
 }
 
+static void kernel_cmdline_to_prop(char *name, int in_qemu)
+{
+    unsigned i;
+    struct {
+        const char *src_prop;
+        const char *key;
+    }
+    prop_map[] = {
+        { "androidboot.dpi", "ro.sf.lcd_density" },
+    };
+
+    /* only add variable that are android-specific */
+    if (!strncmp(name, "androidboot.", 12)) {
+        char *sep = strchr(name, '=');
+        ERROR("%s: %s\n", __func__, name);
+        if (sep) {
+            *sep = 0;
+
+            for (i = 0; i < ARRAY_SIZE(prop_map); i++) {
+                if (!strcmp(name, prop_map[i].src_prop)) {
+                    property_set((char*)prop_map[i].key, sep + 1);
+                    break;
+                }
+            }
+        }
+    }
+}
+
 static void export_kernel_boot_props(void)
 {
     char tmp[PROP_VALUE_MAX];
@@ -799,6 +827,9 @@ static void process_kernel_cmdline(void)
      * for processes that can't access Android properties
      */
     import_kernel_cmdline(0, kernel_cmdline_to_env);
+
+    /* propagate androidboot variables as Android properties */
+    import_kernel_cmdline(0, kernel_cmdline_to_prop);
 
     /* now propogate the info given on command line to internal variables
      * used by init as well as the current required properties
